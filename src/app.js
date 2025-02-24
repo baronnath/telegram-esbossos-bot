@@ -81,7 +81,7 @@ const getEventsInfo = async () => {
         const dateTime = new Date(ev.dateTime);
         if(i != 0)
             eventsText += `\n\n`;
-        eventsText += `<b>&#128315;${ev.name.toUpperCase()}&#128315;</b>\n&#128197;${dateTime.toLocaleDateString("en-US", dateOptions).split(",").join("")} ${dateTime.toLocaleTimeString("en-US", timeOptions)}\n&#128204;<b>${ev.place}</b> (${ev.address})`;
+        eventsText += `<b>&#128315;${ev.name.toUpperCase()}&#128315;</b>\n&#128197;${dateTime.toLocaleDateString("en-US", dateOptions).split(",").join("")} ${dateTime.toLocaleTimeString("en-US", timeOptions)}\n&#128204;<b>${ev.place}</b> (${ev.address})\n&#127903; ${ev.price}€`;
         // Retrieve attendees
         if(ev.attendees.length){
             // eventsText += `\nAttendees:`;
@@ -208,7 +208,7 @@ bot.onText(/\/list/, async (msg, event) => {
     eventsInfo = await getEventsInfo();
     if(!eventsInfo.length)
         return noMatches();
-    bot.sendMessage(chatId, eventsInfo, {parse_mode: 'HTML'});
+    bot.sendMessage(chatId, eventsInfo, {parse_mode: 'HTML', disable_web_page_preview: true});
 });
 
 bot.onText(/\/update/, async (msg, event) => {
