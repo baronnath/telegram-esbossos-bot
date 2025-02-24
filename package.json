@@ -1,7 +1,7 @@
 {
-  "name": "telegram-padel-bot",
+  "name": "telegram-esbossos-bot",
   "version": "1.0.0",
-  "description": "Telegram bot for padel group managing",
+  "description": "Telegram bot for Esbossos del Ram group managing",
   "main": "src/app.js",
   "scripts": {
     "start": "node src/app.js",
@@ -16,6 +16,6 @@
   "license": "ISC",
   "dependencies": {
     "dotenv": "^8.0.0",
-    "node-telegram-bot-api": "^0.30.0"
+    "node-telegram-bot-api": "^0.66.0"
   }
 }

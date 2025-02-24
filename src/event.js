@@ -1,12 +1,16 @@
 const { randomUUID } = require('crypto'); 
 
-const padelMatch =  function (owner) {
+const event =  function (owner) {
 	this.id = randomUUID().slice(-8);
+	this.name = '';
 	this.dateTime = null;
 	this.place = '';
-	this.players = [];
+	this.address = '';
+	this.attendees = [];
+	this.maxAttendees = 0;
+	this.price = 0;
 	this.payed = false;
 	this.owner = owner;
 }
 
-module.exports = padelMatch;
+module.exports = event;
