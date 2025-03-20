@@ -75,13 +75,13 @@ const createDateTime = (date, time) => {
 
 const getEventsInfo = async () => {
     let eventsText = '';
-    const dateOptions = {weekday: 'short', year: 'numeric', month: 'short', day: 'numeric'};
+    const dateOptions = {weekday: 'short', year: '2-digit', month: 'short', day: 'numeric'};
     const timeOptions = {hour: "numeric", minute: "numeric", hour12: false};
     await events.forEach(async (ev, i) => {
         const dateTime = new Date(ev.dateTime);
         if(i != 0)
             eventsText += `\n\n`;
-        eventsText += `<b>&#128315;${ev.name.toUpperCase()}&#128315;</b>\n&#128197;${dateTime.toLocaleDateString("en-US", dateOptions).split(",").join("")} ${dateTime.toLocaleTimeString("en-US", timeOptions)}\n&#128204;<b>${ev.place}</b> (${ev.address})\n&#127903; ${ev.price}€`;
+        eventsText += `<b>&#128315; ${ev.name.toUpperCase()}&#128315;</b>\n&#128197; ${dateTime.toLocaleDateString("en-US", dateOptions).split(",").join("")} ${dateTime.toLocaleTimeString("en-US", timeOptions)}\n&#128204; <b>${ev.place}</b> (${ev.address})\n&#127903; ${ev.price}€`;
         // Retrieve attendees
         if(ev.attendees.length){
             // eventsText += `\nAttendees:`;
@@ -525,14 +525,14 @@ bot.onText(/\/start/, (msg) => {
 
     let message = `Welcome to <b>Esbossos del Ram</b>\nAvailable commands:
         /list - See all coming events
-        /join - Join a padel event
-        /leave - Leave a padel event you joined`;
+        /join - Join an event
+        /leave - Leave an event you joined`;
 
     if(isAdmin){
         message += `\n<i>Only admin commands</i>
-        /create - Create a padel event
-        /update - Update event information
-        /delete - Delete a padel event
+        /create - Create an event
+        /update - Update an event information
+        /delete - Delete an event
         /clean - Delete all past events`;
     }
 
