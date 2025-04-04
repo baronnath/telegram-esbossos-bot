@@ -164,7 +164,6 @@ bot.onText(/\/create/, async (msg, event) => {
                                                                             newEvent.price = price;
                                                                             newEvent.maxAttendees = maxAttendees;
                                                                             events.push(newEvent);
-                                                                            console.log('events:', events);
                                                                             storeEvents(events)
                                                                                 .then(() => bot.sendMessage(
                                                                                     chatId,
@@ -236,7 +235,8 @@ bot.onText(/\/update/, async (msg, event) => {
                 resize_keyboard: true,
                 one_time_keyboard: true,
             }),
-            parse_mode: 'HTML'
+            parse_mode: 'HTML',
+            disable_web_page_preview: true
         }
     );
 });
@@ -334,7 +334,8 @@ bot.onText(/\/join/, async (msg, event) => {
                 resize_keyboard: true,
                 one_time_keyboard: true,
             }),
-            parse_mode: 'HTML'
+            parse_mode: 'HTML',
+            disable_web_page_preview: true
         }
     );
 });
@@ -390,7 +391,8 @@ bot.onText(/\/leave/, async (msg, event) => {
                 resize_keyboard: true,
                 one_time_keyboard: true,
             }),
-            parse_mode: 'HTML'
+            parse_mode: 'HTML',
+            disable_web_page_preview: true
         }
     );
 });
@@ -447,7 +449,8 @@ bot.onText(/\/delete/, async (msg, event) => {
                 resize_keyboard: true,
                 one_time_keyboard: true,
             }),
-            parse_mode: 'HTML'
+            parse_mode: 'HTML',
+            disable_web_page_preview: true
         }
     );
 });
@@ -485,7 +488,6 @@ bot.onText(/\/clean/, async (msg, event) => {
 // Listener (handler) for callback data from /join command
 bot.on('callback_query', (callbackQuery) => {
     const data = JSON.parse(callbackQuery.data);
-    console.log('DATA: ',callbackQuery);
 
     switch (data.action) {
         case 'join':
@@ -528,7 +530,7 @@ bot.onText(/\/start/, (msg) => {
         /join - Join an event
         /leave - Leave an event you joined`;
 
-    if(isAdmin){
+    if(isAdmin(msg.from.id)){
         message += `\n<i>Only admin commands</i>
         /create - Create an event
         /update - Update an event information
