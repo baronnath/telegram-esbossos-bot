@@ -9,6 +9,7 @@ const event =  function (owner) {
 	this.attendees = [];
 	this.maxAttendees = 0;
 	this.price = 0;
+	this.paymentLink = '';
 	this.payed = false;
 	this.owner = owner;
 }

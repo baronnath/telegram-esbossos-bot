@@ -8,6 +8,10 @@ const TelegramBot = require('node-telegram-bot-api');
 
 const token = process.env.TOKEN;
 const admins = process.env.ADMINS.split(' ');
+
+const dateOptions = {weekday: 'short', month: 'short', day: 'numeric'};
+const timeOptions = {hour: "2-digit", minute: "2-digit", hour12: false};
+
 let events = [];
 let chatId;
 
@@ -67,6 +71,10 @@ const validateTime = (string) => {
     return valid;
 }
 
+const validateUrl = (string) => {
+  return /^(?:(?:(?:https?|ftp):)?\/\/)(?:\S+(?::\S*)?@)?(?:(?!(?:10|127)(?:\.\d{1,3}){3})(?!(?:169\.254|192\.168)(?:\.\d{1,3}){2})(?!172\.(?:1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2})(?:[1-9]\d?|1\d\d|2[01]\d|22[0-3])(?:\.(?:1?\d{1,2}|2[0-4]\d|25[0-5])){2}(?:\.(?:[1-9]\d?|1\d\d|2[0-4]\d|25[0-4]))|(?:(?:[a-z\u00a1-\uffff0-9]-*)*[a-z\u00a1-\uffff0-9]+)(?:\.(?:[a-z\u00a1-\uffff0-9]-*)*[a-z\u00a1-\uffff0-9]+)*(?:\.(?:[a-z\u00a1-\uffff]{2,})))(?::\d{2,5})?(?:[/?#]\S*)?$/i.test(string);
+}
+
 const createDateTime = (date, time) => {
     d = date.split('/');
     t = time.split(':');
@@ -75,129 +83,162 @@ const createDateTime = (date, time) => {
 
 const getEventsInfo = async () => {
     let eventsText = '';
-    const dateOptions = {weekday: 'short', year: '2-digit', month: 'short', day: 'numeric'};
-    const timeOptions = {hour: "numeric", minute: "numeric", hour12: false};
+    
     await events.forEach(async (ev, i) => {
         const dateTime = new Date(ev.dateTime);
-        if(i != 0)
-            eventsText += `\n\n`;
-        eventsText += `<b>&#128315; ${ev.name.toUpperCase()}&#128315;</b>\n&#128197; ${dateTime.toLocaleDateString("en-US", dateOptions).split(",").join("")} ${dateTime.toLocaleTimeString("en-US", timeOptions)}\n&#128204; <b>${ev.place}</b> (${ev.address})\n&#127903; ${ev.price}€`;
+        
+        eventsText += `<blockquote expandable>`;
+        eventsText += `<b>&#128315;${ev.name.toUpperCase()}&#128315;</b>\n&#128197; ${dateTime.toLocaleDateString("en-US", dateOptions).split(",").join("")} ${dateTime.toLocaleTimeString("en-US", timeOptions)}\n📍 <b>${ev.place}</b> <i>(${ev.address})</i>`;
         // Retrieve attendees
         if(ev.attendees.length){
             // eventsText += `\nAttendees:`;
-            await ev.attendees.forEach((at) => eventsText += `\n<b><a href="t.me/${at.username}">${at.first_name}</a></b>`);
+            for (const at of ev.attendees) {
+                eventsText += `\n<i><a href="t.me/${at.username}">${at.first_name}</a></i>`;
+            }
         }
+        if(ev.price > 0 && ev.paymentLink.length > 0){
+            eventsText += `\n\n<b><a href="${ev.paymentLink}">Click here to donate ${ev.price}€</a></b>`;
+        } else if(ev.price > 0){
+            eventsText += `\n&#127903; ${ev.price}€`;
+        }
+        eventsText += `</blockquote>`;
     });
     return eventsText;
 }
 
 const createEventsKeyboard = async (action) => {
-    let inlineKeyboard = [];
-    const options = {day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit'}
-    await events.map((ev, i) => {
+    let keyboard = [];
+
+
+    events.forEach((ev, i) => {
         const dateTime = new Date(ev.dateTime);
-        inlineKeyboard.push({
-            text: `#${i+1} ${dateTime.toLocaleDateString("es-ES", options)} ${ev.place}`,
-            callback_data: JSON.stringify({ action: action, eventId: String(ev.id)})
-        });
+        const formattedDate = dateTime.toLocaleDateString("en-US", dateOptions);
+        const formattedTime = dateTime.toLocaleTimeString("en-US", timeOptions);
+
+        keyboard.push([{
+            text: `${ev.name} - ${ev.place} | 📅 ${formattedDate} ${formattedTime}`,
+            callback_data: JSON.stringify({ action: action, eventId: String(ev.id) }),
+        }]);
     });
-    return inlineKeyboard;
-}
+
+    // Return the custom keyboard
+    return {
+        reply_markup: JSON.stringify({
+            inline_keyboard: keyboard,
+            resize_keyboard: true,
+            one_time_keyboard: true,
+        }),
+        parse_mode: 'HTML',
+        disable_web_page_preview: true
+    };
+};
 
 // Created instance of TelegramBot
 const bot = new TelegramBot(token, {
     polling: true
 });
 
-let answerCallbacks = {};
-bot.on('message', function (msg) {
-    var callback = answerCallbacks[msg.chat.id];
+const answerCallbacks = {};
+
+// Listen for generic messages and trigger answer callbacks
+bot.on('message', (msg) => {
+    const callback = answerCallbacks[msg.chat.id];
     if (callback) {
         delete answerCallbacks[msg.chat.id];
-        return callback(msg);
+        callback(msg);
     }
 });
 
-// Listener (handler) for telegram's /bookmark event
-bot.onText(/\/create/, async (msg, event) => {
-    chatId = msg.chat.id;
+// Helper to ask a question and wait for valid input with validation logic
+async function askValidated(chatId, question, validateFn, errorMessage) {
+    while (true) {
+        const answer = await askQuestion(chatId, question);
+        if (validateFn(answer)) return answer;
+        await bot.sendMessage(chatId, errorMessage);
+    }
+}
 
-    if(!isAdmin(msg.from.id)){
+// Helper to ask a question and return the raw text
+function askQuestion(chatId, question) {
+    return new Promise((resolve) => {
+        bot.sendMessage(chatId, question).then(() => {
+            answerCallbacks[chatId] = (msg) => resolve(msg.text.trim());
+        });
+    });
+}
+
+// /create command
+bot.onText(/\/create/, async (msg) => {
+    const chatId = msg.chat.id;
+
+    if (!isAdmin(msg.from.id)) {
         bot.sendMessage(chatId, "Admins only!");
         return;
     }
 
     await loadEvents();
 
-    // Retrieve date, time and place
-    bot.sendMessage(chatId, "Event name?").then(function () {
-        answerCallbacks[chatId] = function (answer) {
-            let name = answer.text;
-            bot.sendMessage(chatId, "Event date? (dd/mm/yy)").then(function () {
-                answerCallbacks[chatId] = function (answer) {
-                    let date = answer.text;
-                    if(validateDate(date) && isFutureDate(date, false))
-                        bot.sendMessage(chatId, "Event time? (hh:mm military time)").then(function () {
-                            answerCallbacks[chatId] = function (answer) {
-                                let time = answer.text;
-                                if(validateTime(time)){
-                                    bot.sendMessage(chatId, "Event place?").then(function () {
-                                        answerCallbacks[chatId] = function (answer) {
-                                            let place = answer.text;
-                                            bot.sendMessage(chatId, "Address details?").then(function () {
-                                                answerCallbacks[chatId] = function (answer) {
-                                                    let address = answer.text;
-                                                    bot.sendMessage(chatId, "Event price? Write 0 if event is free").then(function () {
-                                                        answerCallbacks[chatId] = function (answer) {
-                                                            let price = answer.text;
-                                                            if(!isNaN(price)){
-                                                                bot.sendMessage(chatId, "Maximum number of attendees? Write 0 if there's no limit").then(function () {
-                                                                    answerCallbacks[chatId] = function (answer) {
-                                                                        let maxAttendees = answer.text;
-                                                                        if(!isNaN(maxAttendees)){
-                                                                            let dateTime = createDateTime(date, time);
-                                                                            let newEvent = new Event(msg.from);
-                                                                            newEvent.dateTime = dateTime;
-                                                                            newEvent.name = name;
-                                                                            newEvent.place = place;
-                                                                            newEvent.address = address;
-                                                                            newEvent.price = price;
-                                                                            newEvent.maxAttendees = maxAttendees;
-                                                                            events.push(newEvent);
-                                                                            storeEvents(events)
-                                                                                .then(() => bot.sendMessage(
-                                                                                    chatId,
-                                                                                    'Event has been successfully created!',
-                                                                                )).catch(error => 
-                                                                                  console.error(error)
-                                                                                );
-                                                                        }
-                                                                        else
-                                                                            bot.sendMessage(chatId, "Invalid number!");
-                                                                    }
-                                                                });
+    try {
+        const name = await askValidated(chatId, "Event name?", text => text.length > 0, "Name cannot be empty.");
 
-                                                            }
-                                                            else
-                                                                bot.sendMessage(chatId, "Invalid number!");
-                                                        }
-                                                    });
-                                                }
-                                            });
-                                        }
-                                    });
-                                }
-                                else
-                                    bot.sendMessage(chatId, "Invalid time!");
-                            }
-                        });
-                    else
-                        bot.sendMessage(chatId, "Invalid date!");
-                }
-            });
-        }
-    });
+        const date = await askValidated(
+            chatId,
+            "Event date? (dd/mm/yy)",
+            (text) => validateDate(text) && isFutureDate(text, false),
+            "Invalid or past date. Use dd/mm/yy format."
+        );
 
+        const time = await askValidated(
+            chatId,
+            "Event time? (hh:mm military time)",
+            validateTime,
+            "Invalid time. Use hh:mm format (24-hour)."
+        );
+
+        const place = await askValidated(chatId, "Event place?", text => text.length > 0, "Place cannot be empty.");
+        const address = await askValidated(chatId, "Address details?", text => text.length > 0, "Address cannot be empty.");
+
+        const maxAttendees = await askValidated(
+            chatId,
+            "Maximum number of attendees? Write 0 if there's no limit",
+            text => !isNaN(parseInt(text)),
+            "Invalid number for attendees."
+        );
+
+        const price = await askValidated(
+            chatId,
+            "Event price? Write 0 if event is free",
+            text => !isNaN(parseFloat(text)),
+            "Invalid number for price."
+        );
+
+        const paymentLink = await askValidated(
+            chatId,
+            "Payment link?",
+            text => validateUrl(text),
+            "Invalid URL."
+        );
+
+        const dateTime = createDateTime(date, time);
+
+        const newEvent = new Event(msg.from);
+        newEvent.name = name;
+        newEvent.dateTime = dateTime;
+        newEvent.place = place;
+        newEvent.address = address;
+        newEvent.maxAttendees = parseInt(maxAttendees);
+        newEvent.price = parseFloat(price);
+        newEvent.paymentLink = paymentLink;
+
+        events.push(newEvent);
+        await storeEvents(events);
+
+        await bot.sendMessage(chatId, "✅ Event has been successfully created!");
+
+    } catch (error) {
+        console.error("Error during event creation:", error);
+        bot.sendMessage(chatId, "❌ Something went wrong while creating the event.");
+    }
 });
 
 // Listener (handler) for telegram's /label event
@@ -224,96 +265,103 @@ bot.onText(/\/update/, async (msg, event) => {
     if(!eventsInfo.length)
         return noMatches();
 
-    inlineKeyboard = await createEventsKeyboard('update');
+    keyboard = await createEventsKeyboard('update');
 
     bot.sendMessage(
         chatId,
         'Which event do you want to <b>update</b>?\n\n' + eventsInfo,
-        {
-            reply_markup: JSON.stringify({
-                inline_keyboard: [inlineKeyboard],
-                resize_keyboard: true,
-                one_time_keyboard: true,
-            }),
-            parse_mode: 'HTML',
-            disable_web_page_preview: true
-        }
+        keyboard
     );
 });
 
 const updateEvent = async (cb, eventId) => {
     await loadEvents();
     const chatId = cb.message.chat.id;
-    const index = await events.findIndex((ev) => ev.id == eventId);
+    const index = events.findIndex((ev) => ev.id == eventId);
+    if (index === -1) {
+        await bot.sendMessage(chatId, "❌ Event not found.");
+        return;
+    }
 
+    const event = events[index];
+    const prevDate = new Date(event.dateTime);
 
-    // Retrieve date, time and place
-    const prevDate = new Date(events[index].dateTime);
-    bot.sendMessage(chatId, `New event name? Currently ${events[index].name}`).then(function () {
-        answerCallbacks[chatId] = function (answer) {
-            let name = answer.text;
-            bot.sendMessage(chatId, `New event date? Currently ${twoDigits(prevDate.getDate())}/${twoDigits(prevDate.getMonth() + 1)}/${twoDigits(String(prevDate.getFullYear()))}`).then(function () {
-                answerCallbacks[chatId] = function (answer) {
-                    let date = answer.text;
-                    if(validateDate(date))
-                        bot.sendMessage(chatId, `New event time?  Currently ${twoDigits(prevDate.getHours())}:${twoDigits(prevDate.getMinutes())}`).then(function () {
-                            answerCallbacks[chatId] = function (answer) {
-                                let time = answer.text;
-                                if(validateTime(time)){
-                                    bot.sendMessage(chatId, `New event place? Currently ${events[index].place}`).then(function () {
-                                        answerCallbacks[chatId] = async function (answer) {
-                                            let place = answer.text;
-                                            bot.sendMessage(chatId, `New address details? Currently ${events[index].address}`).then(function () {
-                                                answerCallbacks[chatId] = function (answer) {
-                                                    let address = answer.text;
-                                                    bot.sendMessage(chatId, `New event price?? Currently ${events[index].price}`).then(function () {
-                                                        answerCallbacks[chatId] = function (answer) {
-                                                            let price = answer.text;
-                                                            if(!isNaN(price)){
-                                                                bot.sendMessage(chatId, "Maximum number of attendees? Write 0 if there's no limit").then(function () {
-                                                                    answerCallbacks[chatId] = function (answer) {
-                                                                        let maxAttendees = answer.text;
-                                                                        if(!isNaN(maxAttendees)){
-                                                                            let dateTime = createDateTime(date, time);
+    try {
+        const name = await askValidated(
+            chatId,
+            `New event name? (currently: ${event.name})`,
+            text => text.length > 0,
+            "Name cannot be empty."
+        );
 
-                                                                            events[index].dateTime = dateTime;
-                                                                            events[index].name = name;
-                                                                            events[index].place = place;
-                                                                            events[index].address = address;
-                                                                            events[index].price = price;
-                                                                            events[index].maxAttendees = maxAttendees;
-                                                                            
-                                                                            storeEvents(events)
-                                                                                .then(() => bot.sendMessage(
-                                                                                    chatId,
-                                                                                    'Event has been successfully updated!',
-                                                                                ));
-                                                                        }
-                                                                        else
-                                                                            bot.sendMessage(chatId, "Invalid number!");
-                                                                    }
-                                                                });
-                                                            }
-                                                            else
-                                                                bot.sendMessage(chatId, "Invalid number!");
-                                                        }
-                                                    });
-                                                }
-                                            });
-                                        }
-                                    });
-                                }
-                                else
-                                    bot.sendMessage(chatId, "Invalid time!");
-                            }
-                        });
-                    else
-                        bot.sendMessage(chatId, "Invalid date!");
-                }
-            });
-        }
-    });
-};    
+        const date = await askValidated(
+            chatId,
+            `New event date? (currently: ${twoDigits(prevDate.getDate())}/${twoDigits(prevDate.getMonth() + 1)}/${twoDigits(String(prevDate.getFullYear()))})`,
+            text => validateDate(text) && isFutureDate(text, false),
+            "Invalid or past date. Use dd/mm/yy format."
+        );
+
+        const time = await askValidated(
+            chatId,
+            `New event time? (currently: ${twoDigits(prevDate.getHours())}:${twoDigits(prevDate.getMinutes())})`,
+            validateTime,
+            "Invalid time. Use hh:mm format (24-hour)."
+        );
+
+        const place = await askValidated(
+            chatId,
+            `New event place? (currently: ${event.place})`,
+            text => text.length > 0,
+            "Place cannot be empty."
+        );
+
+        const address = await askValidated(
+            chatId,
+            `New address details? (currently: ${event.address})`,
+            text => text.length > 0,
+            "Address cannot be empty."
+        );
+
+        const price = await askValidated(
+            chatId,
+            `New event price? (currently: ${event.price})€`,
+            text => !isNaN(parseFloat(text)),
+            "Invalid number for price."
+        );
+
+        const maxAttendees = await askValidated(
+            chatId,
+            `New maximum number of attendees? (currently: ${event.maxAttendees})`,
+            text => !isNaN(parseInt(text)),
+            "Invalid number for attendees."
+        );
+
+        const paymentLink = await askValidated(
+            chatId,
+            `New payment link? (currently: ${event.paymentLink || "none"})`,
+            text => validateUrl(text),
+            "Invalid URL format."
+        );
+
+        const dateTime = createDateTime(date, time);
+
+        // Update the event
+        event.name = name;
+        event.dateTime = dateTime;
+        event.place = place;
+        event.address = address;
+        event.price = parseFloat(price);
+        event.maxAttendees = parseInt(maxAttendees);
+        event.paymentLink = paymentLink;
+
+        await storeEvents(events);
+        await bot.sendMessage(chatId, "✅ Event has been successfully updated!");
+
+    } catch (err) {
+        console.error("Update failed:", err);
+        await bot.sendMessage(chatId, "❌ An error occurred while updating the event.");
+    }
+};
 
 bot.onText(/\/join/, async (msg, event) => {
     await loadEvents();
@@ -323,20 +371,12 @@ bot.onText(/\/join/, async (msg, event) => {
     if(!eventsInfo.length)
         return noEvents();
 
-    inlineKeyboard = await createEventsKeyboard('join');
+    keyboard = await createEventsKeyboard('join');
 
     bot.sendMessage(
         chatId,
         'Which event do you want to <b>join</b>?\n\n' + eventsInfo,
-        {
-            reply_markup: JSON.stringify({
-                inline_keyboard: [inlineKeyboard],
-                resize_keyboard: true,
-                one_time_keyboard: true,
-            }),
-            parse_mode: 'HTML',
-            disable_web_page_preview: true
-        }
+        keyboard
     );
 });
 
@@ -345,31 +385,62 @@ const joinEvent = async (cb, eventId) => {
     await loadEvents();
 
     const index = await events.findIndex((ev) => ev.id == eventId);
+    const event = events[index];
    
+
     // Check event date
-    if(!isFutureDate(events[index].dateTime))
-        return bot.sendMessage(chatId, "Sorry this event has ended");
-
-    // Check number of attendees
-    if(events[index].maxAttendees > 0 && events[index].attendees.length >= events[index].maxAttendees)
-        return bot.sendMessage(chatId, "Event is full!");
-
-    // Check user is not already enrolled
-    if(events[index].attendees.length) {
-        let valid = await events[index].attendees.every((at) => {
-            return at.id != cb.from.id;
-        });
-        if(!valid)
-            return bot.sendMessage(chatId, "You are already enrolled!");
+    if (!isFutureDate(event.dateTime)) {
+        return bot.sendMessage(chatId, "❌ This event has already ended.");
     }
 
-    // Add player
-    events[index].attendees.push(cb.from);
-    storeEvents(events)
-        .then(() => bot.sendMessage(
+    // Check max attendees
+    if (event.maxAttendees > 0 && event.attendees.length >= event.maxAttendees) {
+        return bot.sendMessage(chatId, "❌ Sorry, this event is full.");
+    }
+
+    // Check if already joined
+    const alreadyJoined = event.attendees.some((at) => at.id === cb.from.id);
+    if (alreadyJoined) {
+        return bot.sendMessage(chatId, "⚠️ You have already joined this event.");
+    }
+
+    // Ask about donation, but allow joining regardless
+    if (event.paymentLink) {
+        await bot.sendMessage(
             chatId,
-            'You joined the event successfully!',
-        ));
+            `Please consider donating if you haven't already 🙏\n\n💳 <b><a href="${event.paymentLink}">Click here to donate ${event.price}€</a></b>\n\nHave you already donated? (yes/no)`,
+            { parse_mode: 'HTML', disable_web_page_preview: false }
+        );
+
+        answerCallbacks[chatId] = async function handleDonationResponse(msg) {
+            const answer = msg.text.trim().toLowerCase();
+            let donated = false;
+
+            if (answer === "yes") donated = true;
+            else if (answer !== "no") {
+                await bot.sendMessage(chatId, "Please answer with 'yes' or 'no'.");
+                answerCallbacks[chatId] = handleDonationResponse;
+                return;
+            }
+
+            event.attendees.push({
+                ...cb.from,
+                donated
+            });
+
+            await storeEvents(events);
+            await bot.sendMessage(chatId, "✅ You have successfully joined the event!");
+        };
+    } else {
+        // No payment link, just join directly
+        event.attendees.push({
+            ...cb.from,
+            donated: false // no payment link, assume false
+        });
+
+        await storeEvents(events);
+        return bot.sendMessage(chatId, "✅ You have successfully joined the event!");
+    }
 };
 
 bot.onText(/\/leave/, async (msg, event) => {
@@ -380,48 +451,46 @@ bot.onText(/\/leave/, async (msg, event) => {
     if(!eventsInfo.length)
         return noMatches();
 
-    inlineKeyboard = await createEventsKeyboard('leave');
+    keyboard = await createEventsKeyboard('leave');
 
     bot.sendMessage(
         chatId,
         'Which event do you want to <b>leave</b>?\n\n' + eventsInfo,
-        {
-            reply_markup: JSON.stringify({
-                inline_keyboard: [inlineKeyboard],
-                resize_keyboard: true,
-                one_time_keyboard: true,
-            }),
-            parse_mode: 'HTML',
-            disable_web_page_preview: true
-        }
+        keyboard
     );
 });
 
 const leaveEvent = async (cb, eventId) => {
     const chatId = cb.message.chat.id;
     await loadEvents();
-    const index = await events.findIndex((ev) => ev.id == eventId);
-   
-    // Check number of players
-    if(!events[index].attendees.length)
-        return bot.sendMessage(chatId, "There are no attendees");
     
-    let valid = await events[index].attendees.find((at) => at.id == cb.from.id);
+    const event = events.find((ev) => ev.id == eventId);  // Use `find` for direct match
 
-    if(valid == undefined)
-        return bot.sendMessage(chatId, "You are not enrolled on this event!");
+    // If the event does not exist
+    if (!event) {
+        return bot.sendMessage(chatId, "⚠️ Event not found.");
+    }
 
-    let filteredAttendees = await events[index].attendees.filter((at) => {
-        return at.id != cb.from.id;
-    });
+    // If there are no attendees
+    if (event.attendees.length === 0) {
+        return bot.sendMessage(chatId, "⚠️ There are no attendees for this event.");
+    }
 
-    // Add player
-    events[index].attendees = filteredAttendees;
-    storeEvents(events)
-        .then(() => bot.sendMessage(
-            chatId,
-            'You left the event',
-        ));
+    // Check if the user is already enrolled
+    const attendeeIndex = event.attendees.findIndex((at) => at.id === cb.from.id);
+
+    if (attendeeIndex === -1) {
+        return bot.sendMessage(chatId, "⚠️ You are not enrolled in this event.");
+    }
+
+    // Remove the user from the attendees list
+    event.attendees.splice(attendeeIndex, 1);
+
+    // Store the updated event
+    await storeEvents(events);
+
+    // Inform the user
+    bot.sendMessage(chatId, "You have successfully left the event.");
 };
 
 bot.onText(/\/delete/, async (msg, event) => {
@@ -442,16 +511,8 @@ bot.onText(/\/delete/, async (msg, event) => {
 
     bot.sendMessage(
         chatId,
-        'Which event do you want to <b>delete</b>? <em>Only events you own</em>\n\n' + eventsInfo,
-        {
-            reply_markup: JSON.stringify({
-                inline_keyboard: [inlineKeyboard],
-                resize_keyboard: true,
-                one_time_keyboard: true,
-            }),
-            parse_mode: 'HTML',
-            disable_web_page_preview: true
-        }
+        'Which event do you want to <b>delete</b>?\n\n' + eventsInfo,
+        keyboard
     );
 });
 
