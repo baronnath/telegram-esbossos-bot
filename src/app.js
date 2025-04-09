@@ -39,7 +39,7 @@ const storeEvents = async (events) => {
         .catch((err) => {
             bot.sendMessage(
                 chatId,
-                'Error! Event not saved',
+                '❌ Error! Event not saved',
             );
         });  
 }
@@ -185,14 +185,14 @@ bot.onText(/\/create/, async (msg) => {
             chatId,
             "Event date? (dd/mm/yy)",
             (text) => validateDate(text) && isFutureDate(text, false),
-            "Invalid or past date. Use dd/mm/yy format."
+            "⚠️ Invalid or past date. Use dd/mm/yy format."
         );
 
         const time = await askValidated(
             chatId,
             "Event time? (hh:mm military time)",
             validateTime,
-            "Invalid time. Use hh:mm format (24-hour)."
+            "⚠️ Invalid time. Use hh:mm format (24-hour)."
         );
 
         const place = await askValidated(chatId, "Event place?", text => text.length > 0, "Place cannot be empty.");
@@ -202,21 +202,21 @@ bot.onText(/\/create/, async (msg) => {
             chatId,
             "Maximum number of attendees? Write 0 if there's no limit",
             text => !isNaN(parseInt(text)),
-            "Invalid number for attendees."
+            "⚠️ Invalid number for attendees."
         );
 
         const price = await askValidated(
             chatId,
             "Event price? Write 0 if event is free",
             text => !isNaN(parseFloat(text)),
-            "Invalid number for price."
+            "⚠️ Invalid number for price."
         );
 
         const paymentLink = await askValidated(
             chatId,
             "Payment link?",
             text => validateUrl(text),
-            "Invalid URL."
+            "⚠️ Invalid URL."
         );
 
         const dateTime = createDateTime(date, time);
@@ -291,56 +291,56 @@ const updateEvent = async (cb, eventId) => {
             chatId,
             `New event name? (currently: ${event.name})`,
             text => text.length > 0,
-            "Name cannot be empty."
+            "⚠️ Name cannot be empty."
         );
 
         const date = await askValidated(
             chatId,
             `New event date? (currently: ${twoDigits(prevDate.getDate())}/${twoDigits(prevDate.getMonth() + 1)}/${twoDigits(String(prevDate.getFullYear()))})`,
             text => validateDate(text) && isFutureDate(text, false),
-            "Invalid or past date. Use dd/mm/yy format."
+            "⚠️ Invalid or past date. Use dd/mm/yy format."
         );
 
         const time = await askValidated(
             chatId,
             `New event time? (currently: ${twoDigits(prevDate.getHours())}:${twoDigits(prevDate.getMinutes())})`,
             validateTime,
-            "Invalid time. Use hh:mm format (24-hour)."
+            "⚠️ Invalid time. Use hh:mm format (24-hour)."
         );
 
         const place = await askValidated(
             chatId,
             `New event place? (currently: ${event.place})`,
             text => text.length > 0,
-            "Place cannot be empty."
+            "⚠️ Place cannot be empty."
         );
 
         const address = await askValidated(
             chatId,
             `New address details? (currently: ${event.address})`,
             text => text.length > 0,
-            "Address cannot be empty."
+            "⚠️ Address cannot be empty."
         );
 
         const price = await askValidated(
             chatId,
             `New event price? (currently: ${event.price})€`,
             text => !isNaN(parseFloat(text)),
-            "Invalid number for price."
+            "⚠️ Invalid number for price."
         );
 
         const maxAttendees = await askValidated(
             chatId,
             `New maximum number of attendees? (currently: ${event.maxAttendees})`,
             text => !isNaN(parseInt(text)),
-            "Invalid number for attendees."
+            "⚠️ Invalid number for attendees."
         );
 
         const paymentLink = await askValidated(
             chatId,
             `New payment link? (currently: ${event.paymentLink || "none"})`,
             text => validateUrl(text),
-            "Invalid URL format."
+            "⚠️ Invalid URL format."
         );
 
         const dateTime = createDateTime(date, time);
